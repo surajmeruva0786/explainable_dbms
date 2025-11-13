@@ -1,0 +1,14 @@
+mysql-connector-python
+sqlalchemy
+pandas
+numpy
+scikit-learn
+xgboost
+shap
+lime
+matplotlib
+seaborn
+plotly
+kaleido
+scipy
+
