@@ -58,14 +58,40 @@ def shap_waterfall_plot(artifact: ModelArtifact, paths: PathsConfig) -> None:
     if artifact.shap_values.shape[0] == 0:
         return
 
-    base_value = artifact.shap_expected_value
-    shap_vals = artifact.shap_values[0]
+    # Extract base_value as a scalar
+    base_value_raw = artifact.shap_expected_value
+    if hasattr(base_value_raw, '__len__') and not isinstance(base_value_raw, str):
+        base_value = float(np.asarray(base_value_raw).flatten()[0])
+    else:
+        base_value = float(base_value_raw)
+    
+    # Ensure we get a single 1D array for the waterfall plot
     sample_row = artifact.shap_sample.iloc[0]
+    feature_names_list = list(sample_row.index)
+    n_features = len(feature_names_list)
+    
+    shap_vals_raw = artifact.shap_values[0]
+    if hasattr(shap_vals_raw, 'flatten'):
+        shap_vals_flat = shap_vals_raw.flatten()
+    elif hasattr(shap_vals_raw, 'tolist'):
+        shap_vals_flat = np.array(shap_vals_raw.tolist()).flatten()
+    else:
+        shap_vals_flat = np.array(shap_vals_raw).flatten()
+    
+    # Ensure shap_vals matches the number of features
+    if len(shap_vals_flat) > n_features:
+        shap_vals = shap_vals_flat[:n_features]
+    elif len(shap_vals_flat) < n_features:
+        # Pad with zeros if needed
+        shap_vals = np.pad(shap_vals_flat, (0, n_features - len(shap_vals_flat)), mode='constant')
+    else:
+        shap_vals = shap_vals_flat
+    
     explanation = shap.Explanation(
         values=shap_vals,
         base_values=base_value,
-        data=sample_row.values,
-        feature_names=list(sample_row.index),
+        data=sample_row.values[:n_features] if len(sample_row.values) > n_features else sample_row.values,
+        feature_names=feature_names_list,
     )
     fig = plt.figure(figsize=(10, 6))
     shap.plots.waterfall(explanation, max_display=10, show=False)
@@ -77,9 +103,18 @@ def shap_waterfall_plot(artifact: ModelArtifact, paths: PathsConfig) -> None:
 
 def shap_bar_plot(artifact: ModelArtifact, paths: PathsConfig) -> None:
     """Bar chart of mean absolute SHAP values."""
-    mean_abs = np.abs(artifact.shap_values).mean(axis=0)
+    # Flatten to get mean absolute SHAP values for each feature
+    shap_flat = artifact.shap_values.flatten()
+    # Reshape to match feature count if needed
+    n_features = len(artifact.shap_sample.columns)
+    if len(shap_flat) > n_features:
+        shap_flat = shap_flat[:n_features]
+    
+    mean_abs = np.abs(shap_flat)
+    if mean_abs.ndim > 1:
+        mean_abs = mean_abs.mean(axis=0)
     feature_names = list(artifact.shap_sample.columns)
-    order = np.argsort(mean_abs)[::-1]
+    order = np.argsort(mean_abs)[::-1].tolist()
 
     fig = go.Figure(
         data=[
@@ -126,9 +161,18 @@ def lime_local_plot(artifact: ModelArtifact, paths: PathsConfig) -> None:
 
 def combined_dashboard(artifact: ModelArtifact, paths: PathsConfig) -> None:
     """Create a combined dashboard comparing SHAP and LIME outputs."""
-    mean_abs = np.abs(artifact.shap_values).mean(axis=0)
+    # Flatten to get mean absolute SHAP values for each feature
+    shap_flat = artifact.shap_values.flatten()
+    # Reshape to match feature count if needed
+    n_features = len(artifact.shap_sample.columns)
+    if len(shap_flat) > n_features:
+        shap_flat = shap_flat[:n_features]
+    
+    mean_abs = np.abs(shap_flat)
+    if mean_abs.ndim > 1:
+        mean_abs = mean_abs.mean(axis=0)
     feature_names = list(artifact.shap_sample.columns)
-    order = np.argsort(mean_abs)[::-1]
+    order = np.argsort(mean_abs)[::-1].tolist()
     first_idx = next(iter(artifact.lime_explanations), None)
     lime_features, lime_weights = ([], [])
     if first_idx is not None:

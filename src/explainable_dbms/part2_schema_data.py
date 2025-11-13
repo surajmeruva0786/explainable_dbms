@@ -98,7 +98,17 @@ def generate_transactions(
 
 def store_dataframe(engine: Engine, df: pd.DataFrame, table_name: str) -> None:
     """Persist the provided dataframe into MySQL, replacing existing data."""
-    df.to_sql(table_name, con=engine, if_exists="replace", index=False, chunksize=500)
+    # Use truncate + append to preserve schema definitions from SQLAlchemy models
+    with engine.begin() as connection:
+        # Disable foreign key checks temporarily to allow truncation
+        connection.execute(text("SET FOREIGN_KEY_CHECKS = 0"))
+        # Truncate the table to remove existing data
+        connection.execute(text(f"TRUNCATE TABLE {table_name}"))
+        # Re-enable foreign key checks
+        connection.execute(text("SET FOREIGN_KEY_CHECKS = 1"))
+    
+    # Append data using the existing schema
+    df.to_sql(table_name, con=engine, if_exists="append", index=False, chunksize=500)
 
 
 def generate_and_store_all(engine: Engine, paths_config: PathsConfig | None = None) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -153,7 +163,30 @@ def compute_aggregated_features(engine: Engine, paths_config: PathsConfig | None
         pd.Timestamp(date(2024, 12, 31)) - feature_df["last_transaction_date"]
     ).dt.days.fillna(999)
 
-    feature_df["churn"] = (feature_df["days_since_last_transaction"] > 120).astype(int)
+    # Create more realistic churn label based on multiple behavioral factors
+    # to avoid perfect separation when days_since_last_transaction is used as feature
+    # Churn probability increases with:
+    # - Low transaction frequency
+    # - Low spending
+    # - Long time since last transaction
+    # - Lower credit score
+    # - Lower income (relative)
+    feature_df["transaction_rate"] = feature_df["transaction_count"] / 730  # transactions per day
+    feature_df["spending_rate"] = feature_df["total_spending"] / (feature_df["days_since_last_transaction"] + 1)
+    
+    # Compute churn probability using multiple factors with some randomness
+    # Use a deterministic RNG for reproducibility (modern NumPy approach)
+    rng = np.random.default_rng(42)
+    churn_probability = (
+        0.3 * (feature_df["days_since_last_transaction"] > 120).astype(float) +
+        0.25 * (feature_df["transaction_count"] < 5).astype(float) +
+        0.2 * (feature_df["total_spending"] < 500).astype(float) +
+        0.15 * (feature_df["credit_score"] < 600).astype(float) +
+        0.1 * (feature_df["income"] < feature_df["income"].median()).astype(float) +
+        rng.normal(0, 0.1, size=len(feature_df))  # Add noise for realism
+    )
+    churn_probability = np.clip(churn_probability, 0, 1)
+    feature_df["churn"] = (rng.random(len(feature_df)) < churn_probability).astype(int)
 
     paths = paths_config or get_paths_config()
     save_dataframe(feature_df, paths.output_dir / "aggregated_features.csv")

@@ -33,7 +33,8 @@ FEATURE_COLUMNS = [
     "avg_transaction_amount",
     "unique_categories",
     "avg_discount",
-    "days_since_last_transaction",
+    # Note: days_since_last_transaction is intentionally excluded to avoid data leakage
+    # since it's directly used to compute churn labels
 ]
 
 
@@ -220,9 +221,13 @@ def train_models_and_explain(
         accuracy, report, cmatrix, y_pred, y_prob = _compute_metrics(model, X_test, y_test)
 
         shap_values, expected_value = _generate_shap_values(model, X_train, sample)
+        # Ensure shap_values is a 2D array for proper iteration
+        shap_array_2d = np.asarray(shap_values)
+        if shap_array_2d.ndim == 1:
+            shap_array_2d = shap_array_2d.reshape(1, -1)
         shap_payload = {
-            idx: dict(zip(feature_names, shap_row))
-            for idx, shap_row in zip(sample.index, shap_array)
+            idx: {feat: float(val) for feat, val in zip(feature_names, shap_row.flatten())}
+            for idx, shap_row in zip(sample.index, shap_array_2d)
         }
 
         lime_payload = _generate_lime_explanations(model, X_train, sample, feature_names)
@@ -255,7 +260,7 @@ def train_models_and_explain(
             classification_report=report,
             confusion_matrix=cmatrix,
             feature_importance=_feature_importance(model, feature_names),
-            shap_values=shap_array,
+            shap_values=shap_array_2d,
             shap_expected_value=expected_value,
             shap_sample=sample,
             lime_explanations=lime_payload,

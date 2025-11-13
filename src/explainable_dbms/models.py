@@ -16,6 +16,7 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -87,8 +88,8 @@ class PredictionResult(Base):
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     prediction_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     probability: Mapped[float] = mapped_column(Float, nullable=True)
-    shap_values: Mapped[Optional[str]] = mapped_column(String(10000), nullable=True)
-    lime_values: Mapped[Optional[str]] = mapped_column(String(10000), nullable=True)
+    shap_values: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    lime_values: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     customer: Mapped[Customer] = relationship("Customer", back_populates="predictions")
 

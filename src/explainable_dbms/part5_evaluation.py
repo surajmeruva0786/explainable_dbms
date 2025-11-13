@@ -73,14 +73,36 @@ def measure_latency(engine: Engine, artifacts: List[ModelArtifact]) -> Performan
 def compute_fidelity(artifact: ModelArtifact) -> float:
     """Estimate explanation fidelity via surrogate logistic regression."""
     shap_matrix = artifact.shap_values
-    sample_indices = artifact.shap_sample.index
+    # Ensure shap_matrix is 2D (samples x features)
+    if shap_matrix.ndim > 2:
+        # Take first class if multi-class, or flatten
+        shap_matrix = shap_matrix.reshape(shap_matrix.shape[0], -1)
+    elif shap_matrix.ndim == 1:
+        shap_matrix = shap_matrix.reshape(1, -1)
+    
+    # Ensure we have the right number of features
+    n_samples = shap_matrix.shape[0]
+    n_features = shap_matrix.shape[1]
+    
+    # Truncate or pad to match sample count
+    sample_indices = artifact.shap_sample.index[:n_samples]
     predictions_indexed = artifact.predictions.set_index("customer_id")
     aligned = predictions_indexed.reindex(sample_indices)
-    target = aligned["predicted_class"].eq("churn").astype(int)
-    surrogate = LogisticRegression(max_iter=1000)
+    target = aligned["predicted_class"].eq("churn").astype(int).values
+    
+    # Ensure target matches sample count
+    if len(target) > n_samples:
+        target = target[:n_samples]
+    elif len(target) < n_samples:
+        shap_matrix = shap_matrix[:len(target), :]
+    
+    if len(target) == 0 or shap_matrix.shape[0] == 0:
+        return 0.0
+    
+    surrogate = LogisticRegression(max_iter=1000, random_state=42)
     surrogate.fit(shap_matrix, target)
     predicted = surrogate.predict(shap_matrix)
-    return float((predicted == target.to_numpy()).mean())
+    return float((predicted == target).mean())
 
 
 def compute_consistency(artifacts: List[ModelArtifact]) -> float:
