@@ -11,4 +11,5 @@ seaborn
 plotly
 kaleido
 scipy
-
+google-generativeai
+python-dotenv

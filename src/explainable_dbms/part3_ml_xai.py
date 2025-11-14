@@ -18,24 +18,12 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from sklearn.model_selection import train_test_split
 from xgboost import XGBClassifier
 
+import time
 from sqlalchemy.engine import Engine
 
 from .config import PathsConfig, get_paths_config
 from .io_utils import save_json
-
-
-FEATURE_COLUMNS = [
-    "age",
-    "income",
-    "credit_score",
-    "transaction_count",
-    "total_spending",
-    "avg_transaction_amount",
-    "unique_categories",
-    "avg_discount",
-    # Note: days_since_last_transaction is intentionally excluded to avoid data leakage
-    # since it's directly used to compute churn labels
-]
+from .llm_summarizer import summarize_text, save_summary
 
 
 @dataclass
@@ -55,15 +43,22 @@ class ModelArtifact:
     predictions: pd.DataFrame
 
 
-def prepare_datasets(feature_df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
+def prepare_datasets(feature_df: pd.DataFrame, target_column: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, List[str]]:
     """Split the aggregated feature dataframe into train/test sets."""
+    feature_columns = [col for col in feature_df.columns if col != target_column and col != 'customer_id']
+    
+    # Check for non-numeric columns and handle them
+    # For simplicity, we'll drop them for now. A better approach would be to encode them.
+    numeric_feature_columns = feature_df[feature_columns].select_dtypes(include=np.number).columns.tolist()
+    
     dataset = feature_df.set_index("customer_id")
-    X = dataset[FEATURE_COLUMNS]
-    y = dataset["churn"]
+    X = dataset[numeric_feature_columns]
+    y = dataset[target_column]
+    
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.25, random_state=42, stratify=y
     )
-    return X_train, X_test, y_train, y_test
+    return X_train, X_test, y_train, y_test, numeric_feature_columns
 
 
 def _train_random_forest(X_train: pd.DataFrame, y_train: pd.Series) -> RandomForestClassifier:
@@ -125,12 +120,13 @@ def _generate_lime_explanations(
     X_train: pd.DataFrame,
     X_sample: pd.DataFrame,
     feature_names: List[str],
+    class_names: List[str]
 ) -> Dict[int, List[Tuple[str, float]]]:
     """Generate LIME explanations with top contributing features."""
     explainer = LimeTabularExplainer(
         training_data=X_train.values,
         feature_names=feature_names,
-        class_names=["retain", "churn"],
+        class_names=class_names,
         mode="classification",
         discretize_continuous=True,
         verbose=False,
@@ -166,6 +162,7 @@ def _assemble_predictions_df(
     y_prob: np.ndarray,
     y_pred: np.ndarray,
     model_name: str,
+    target_column: str,
     shap_payload: Dict[int, Any],
     lime_payload: Dict[int, Any],
 ) -> pd.DataFrame:
@@ -178,9 +175,9 @@ def _assemble_predictions_df(
         rows.append(
             {
                 "customer_id": int(idx),
-                "prediction_type": "customer_churn",
+                "prediction_type": target_column,
                 "prediction_value": float(probability),
-                "predicted_class": "churn" if pred_class == 1 else "retain",
+                "predicted_class": str(pred_class),
                 "model_name": model_name,
                 "prediction_date": timestamp,
                 "probability": float(probability),
@@ -200,13 +197,15 @@ def _feature_importance(model: Any, feature_names: List[str]) -> Optional[List[f
 def train_models_and_explain(
     engine: Engine,
     feature_df: pd.DataFrame,
+    target_column: str,
     paths_config: PathsConfig | None = None,
     shap_sample_size: int = 200,
 ) -> List[ModelArtifact]:
     """Train models, generate explanations, and persist predictions."""
     paths = paths_config or get_paths_config()
-    X_train, X_test, y_train, y_test = prepare_datasets(feature_df)
-    feature_names = list(X_train.columns)
+    X_train, X_test, y_train, y_test, feature_names = prepare_datasets(feature_df, target_column)
+    
+    class_names = [str(c) for c in y_train.unique()]
 
     models = {
         "RandomForestClassifier": _train_random_forest(X_train, y_train),
@@ -221,7 +220,6 @@ def train_models_and_explain(
         accuracy, report, cmatrix, y_pred, y_prob = _compute_metrics(model, X_test, y_test)
 
         shap_values, expected_value = _generate_shap_values(model, X_train, sample)
-        # Ensure shap_values is a 2D array for proper iteration
         shap_array_2d = np.asarray(shap_values)
         if shap_array_2d.ndim == 1:
             shap_array_2d = shap_array_2d.reshape(1, -1)
@@ -230,7 +228,7 @@ def train_models_and_explain(
             for idx, shap_row in zip(sample.index, shap_array_2d)
         }
 
-        lime_payload = _generate_lime_explanations(model, X_train, sample, feature_names)
+        lime_payload = _generate_lime_explanations(model, X_train, sample, feature_names, class_names)
         lime_serializable = {
             int(idx): [{"feature": feat, "weight": float(weight)} for feat, weight in contribs]
             for idx, contribs in lime_payload.items()
@@ -241,6 +239,7 @@ def train_models_and_explain(
             y_prob=y_prob,
             y_pred=y_pred,
             model_name=model_name,
+            target_column=target_column,
             shap_payload=shap_payload,
             lime_payload=lime_serializable,
         )
@@ -289,5 +288,24 @@ def train_models_and_explain(
             paths.explanations_dir / f"{model_name}_explanations.json",
         )
 
-    return artifacts
+        shap_sample_summary = json.dumps({k: shap_payload[k] for k in list(shap_payload.keys())[:2]}, indent=2)
+        lime_sample_summary = json.dumps({k: lime_serializable[k] for k in list(lime_serializable.keys())[:2]}, indent=2)
 
+        summary_content = f"""
+        Model: {model_name}
+        Accuracy: {accuracy}
+
+        Classification Report:
+        {json.dumps(report, indent=2)}
+
+        SHAP Explanations (sample):
+        {shap_sample_summary}
+
+        LIME Explanations (sample):
+        {lime_sample_summary}
+        """
+        summary = summarize_text(summary_content)
+        save_summary(summary, f"{model_name}_summary.txt")
+        time.sleep(60)
+
+    return artifacts
