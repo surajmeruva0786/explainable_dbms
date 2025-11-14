@@ -77,12 +77,17 @@ def run_pipeline() -> None:
     engine = initialize_database(db_config)
 
     try:
-        file_path = "e:\\github_projects\\explainable_dbms\\outputs\\dummy_data.csv"
-        target_column = "churn"
-        
+        file_path = input("Enter the path to your CSV dataset: ")
+        if not Path(file_path).exists():
+            logger.error(f"File not found: {file_path}")
+            return
+            
         table_name = Path(file_path).stem
         logger.info(f"Loading user data from {file_path} into table {table_name}.")
         user_df = load_user_data(engine, file_path, paths_config)
+
+        print(f"Columns in your dataset: {user_df.columns.tolist()}")
+        target_column = input("Enter the name of the column you want to predict (target column): ")
 
         if target_column not in user_df.columns:
             logger.error(f"Target column '{target_column}' not found in the dataset.")
@@ -99,12 +104,11 @@ def run_pipeline() -> None:
 
         logger.info("Model training and initial analysis complete.")
         
-        # This is commented out for testing purposes
-        # while True:
-        #     user_query = input("Ask a question about your data (or type 'exit' to quit): ")
-        #     if user_query.lower() == 'exit':
-        #         break
-        #     answer_user_query(user_query, artifacts, feature_df, target_column)
+        while True:
+            user_query = input("Ask a question about your data (or type 'exit' to quit): ")
+            if user_query.lower() == 'exit':
+                break
+            answer_user_query(user_query, artifacts, feature_df, target_column)
 
     except Exception as e:
         logger.error(f"An error occurred during the pipeline execution: {e}")
