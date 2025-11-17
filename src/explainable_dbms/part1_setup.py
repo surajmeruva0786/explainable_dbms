@@ -47,6 +47,15 @@ def drop_tables(engine: Engine) -> None:
         raise RuntimeError("Failed to drop tables. Check database permissions.") from exc
 
 
+def drop_specific_table(engine: Engine, table_name: str) -> None:
+    """Utility to drop a specific table."""
+    try:
+        with engine.connect() as connection:
+            connection.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+            connection.commit()
+    except ProgrammingError as exc:
+        raise RuntimeError(f"Failed to drop table {table_name}. Check database permissions.") from exc
+
 def initialize_database(config: DatabaseConfig | None = None) -> Engine:
     """
     Top-level helper to create the database (if required) and return an engine.
@@ -54,6 +63,7 @@ def initialize_database(config: DatabaseConfig | None = None) -> Engine:
     cfg = config or get_database_config()
     create_mysql_database(cfg)
     engine = get_engine(cfg)
+    drop_specific_table(engine, "prediction_results")
     create_tables(engine)
     return engine
 

@@ -13,3 +13,4 @@ kaleido
 scipy
 google-generativeai
 python-dotenv
+gradio

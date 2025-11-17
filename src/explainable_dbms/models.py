@@ -81,15 +81,13 @@ class PredictionResult(Base):
     __tablename__ = "prediction_results"
 
     prediction_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.customer_id"), nullable=False)
+    instance_id: Mapped[str] = mapped_column(String(255), nullable=False)
     prediction_type: Mapped[str] = mapped_column(String(100), nullable=False)
     prediction_value: Mapped[float] = mapped_column(Float, nullable=False)
-    predicted_class: Mapped[str] = mapped_column(String(50), nullable=False)
+    predicted_class: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     prediction_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     probability: Mapped[float] = mapped_column(Float, nullable=True)
     shap_values: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     lime_values: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-
-    customer: Mapped[Customer] = relationship("Customer", back_populates="predictions")
 
