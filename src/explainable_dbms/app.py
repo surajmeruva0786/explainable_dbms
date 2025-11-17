@@ -14,16 +14,19 @@ def process_dataset(file):
     if file is None:
         return None, gr.update(choices=[])
     
+    print("Processing dataset...")
     df = pd.read_csv(file.name)
+    print("Dataset processed successfully.")
     return df, gr.update(choices=df.columns.tolist())
 
 def run_analysis(df, target_column):
     if df is None or target_column is None:
-        return "Please upload a dataset and select a target column.", None, None, None, None, None
+        return "Please upload a dataset and select a target column.", None, None, None, None, None, None, None, None, None
 
-    # --- This is a simplified version of the pipeline for the UI ---
+    print("Starting analysis...")
     
     # 1. Setup
+    print("Step 1: Initializing database...")
     engine = initialize_database()
     
     # Create a temporary path for the dataframe
@@ -31,31 +34,40 @@ def run_analysis(df, target_column):
     df.to_csv(temp_path, index=False)
 
     # 2. Load data
+    print("Step 2: Loading data...")
     user_df = load_user_data(engine, str(temp_path), None)
     table_name = temp_path.stem
 
     # 3. Determine task type
+    print("Step 3: Determining task type...")
     target_series = user_df[target_column]
     if pd.api.types.is_numeric_dtype(target_series) and target_series.nunique() > 20:
         task_type = "regression"
     else:
         task_type = "classification"
+    print(f"Task type: {task_type}")
 
     # 4. Feature Engineering
+    print("Step 4: Computing aggregated features...")
     feature_df = compute_aggregated_features(engine, table_name, None)
 
     # 5. LLM Model Selection
+    print("Step 5: Selecting model with LLM...")
     df_head = df.head().to_string()
     selected_model = select_model_with_llm(df_head, target_column, task_type)
+    print(f"Selected model: {selected_model}")
 
     # 6. Model Training
+    print("Step 6: Training model and explaining...")
     artifact = train_models_and_explain(engine, feature_df, target_column, task_type, selected_model, None)
     
     # 7. Visualization
+    print("Step 7: Generating visualizations...")
     visualizations = generate_visualizations([artifact])
     plots = list(visualizations[artifact.model_name].values())
+    print("Analysis complete.")
 
-    return f"Analysis complete. Selected model: {artifact.model_name}. You can now ask questions.", artifact, user_df, feature_df, task_type, plots
+    return f"Analysis complete. Selected model: {artifact.model_name}. You can now ask questions.", artifact, user_df, feature_df, task_type, plots[0], plots[1], plots[2], plots[3], plots[4]
 
 def handle_query(query, artifact, user_df, feature_df, target_column, task_type):
     if not query:
@@ -86,7 +98,11 @@ with gr.Blocks() as demo:
             analysis_status = gr.Textbox(label="Analysis Status", interactive=False)
         with gr.Column(scale=2):
             gr.Markdown("## Analysis Visualizations")
-            plot_gallery = gr.Gallery(label="Model Visualizations", columns=2, height="auto")
+            summary_plot = gr.Plot(label="SHAP Summary Plot")
+            waterfall_plot = gr.Plot(label="SHAP Waterfall Plot")
+            bar_plot = gr.Plot(label="SHAP Bar Plot")
+            lime_plot = gr.Plot(label="LIME Plot")
+            comparison_plot = gr.Plot(label="Comparison Plot")
 
 
     with gr.Row():
@@ -103,7 +119,7 @@ with gr.Blocks() as demo:
     run_button.click(
         run_analysis, 
         inputs=[user_df_state, target_column_dropdown], 
-        outputs=[analysis_status, artifact_state, user_df_state, feature_df_state, task_type_state, plot_gallery]
+        outputs=[analysis_status, artifact_state, user_df_state, feature_df_state, task_type_state, summary_plot, waterfall_plot, bar_plot, lime_plot, comparison_plot]
     )
     
     target_column_dropdown.change(lambda x: x, inputs=target_column_dropdown, outputs=target_column_state)

@@ -34,6 +34,8 @@ def select_model_with_llm(df_head: str, target_column: str, task_type: str) -> s
 
     Please choose one model from the list above. Your response should be only the name of the model.
     """
+    print("--- LLM Prompt ---")
+    print(prompt)
 
     # This is a placeholder for a real LLM call.
     # In a real application, you would use a library like langchain or openai
@@ -42,5 +44,7 @@ def select_model_with_llm(df_head: str, target_column: str, task_type: str) -> s
     
     # For now, let's just return the first model in the list.
     selected_model = models[0]
+    print(f"--- Selected Model ---")
+    print(selected_model)
     
     return selected_model
