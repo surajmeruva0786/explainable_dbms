@@ -14,3 +14,4 @@ scipy
 google-generativeai
 python-dotenv
 gradio
+featuretools

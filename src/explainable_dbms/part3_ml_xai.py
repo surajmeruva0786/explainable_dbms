@@ -47,13 +47,17 @@ class ModelArtifact:
 
 def prepare_datasets(feature_df: pd.DataFrame, target_column: str, task_type: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series, List[str]]:
     """Split the aggregated feature dataframe into train/test sets."""
-    feature_columns = [col for col in feature_df.columns if col != target_column and col != 'Rank']
+    
+    # Use the first column as the index
+    index_column = feature_df.columns[0]
+    feature_df = feature_df.set_index(index_column)
+
+    feature_columns = [col for col in feature_df.columns if col != target_column]
     
     numeric_feature_columns = feature_df[feature_columns].select_dtypes(include=np.number).columns.tolist()
     
-    dataset = feature_df.set_index("Rank")
-    X = dataset[numeric_feature_columns]
-    y = dataset[target_column]
+    X = feature_df[numeric_feature_columns]
+    y = feature_df[target_column]
     
     stratify = y if task_type == "classification" else None
     X_train, X_test, y_train, y_test = train_test_split(

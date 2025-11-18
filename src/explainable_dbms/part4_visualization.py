@@ -169,3 +169,23 @@ def generate_visualizations(artifacts: List[ModelArtifact]) -> Dict[str, Dict[st
             "comparison": combined_dashboard(artifact),
         }
     return visualizations
+
+
+def generate_shap_force_plot_for_instance(artifact: ModelArtifact, instance_index: int) -> go.Figure:
+    """Generate a SHAP force plot for a single instance."""
+    shap_values_for_instance = artifact.shap_values[instance_index]
+    base_value = artifact.shap_expected_value
+    if isinstance(base_value, list):
+        base_value = base_value[0]
+
+    force_plot = shap.force_plot(
+        base_value,
+        shap_values_for_instance,
+        artifact.shap_sample.iloc[instance_index],
+        show=False
+    )
+    
+    # Convert matplotlib plot to plotly
+    from plotly.tools import mpl_to_plotly
+    plotly_fig = mpl_to_plotly(force_plot)
+    return plotly_fig

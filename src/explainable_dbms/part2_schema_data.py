@@ -32,42 +32,40 @@ def load_user_data(engine: Engine, file_path: str, paths_config: PathsConfig | N
 
     return user_df
 
+import featuretools as ft
+
 def compute_aggregated_features(engine: Engine, table_name: str, paths_config: PathsConfig | None = None) -> pd.DataFrame:
     """Run the analytical SQL query and return a feature matrix for modelling."""
     with engine.connect() as connection:
         feature_df = pd.read_sql_table(table_name, con=connection)
 
-    # The following feature engineering is specific to the old synthetic dataset.
-    # This will be replaced with a more dynamic approach based on user's data and query.
-    # For now, we will just return the dataframe.
-    
-    # feature_df["transaction_count"].fillna(0, inplace=True)
-    # feature_df["total_spending"].fillna(0.0, inplace=True)
-    # feature_df["avg_transaction_amount"].fillna(0.0, inplace=True)
-    # feature_df["last_transaction_date"] = pd.to_datetime(feature_df["last_transaction_date"])
-    # feature_df["unique_categories"].fillna(0, inplace=True)
-    # feature_df["avg_discount"].fillna(0.0, inplace=True)
+    try:
+        print("--- Starting automated feature engineering with featuretools ---")
+        es = ft.EntitySet(id="user_data")
+        es = es.add_dataframe(
+            dataframe_name=table_name,
+            dataframe=feature_df,
+            index=feature_df.columns[0],
+        )
 
-    # feature_df["days_since_last_transaction"] = (
-    #     pd.Timestamp(date(2024, 12, 31)) - feature_df["last_transaction_date"]
-    # ).dt.days.fillna(999)
+        print("--- Running Deep Feature Synthesis (DFS) ---")
+        feature_matrix, feature_defs = ft.dfs(
+            entityset=es,
+            target_dataframe_name=table_name,
+            max_depth=2,
+            verbose=1,
+            n_jobs=-1,
+        )
 
-    # feature_df["transaction_rate"] = feature_df["transaction_count"] / 730  # transactions per day
-    # feature_df["spending_rate"] = feature_df["total_spending"] / (feature_df["days_since_last_transaction"] + 1)
-    
-    # rng = np.random.default_rng(42)
-    # churn_probability = (
-    #     0.3 * (feature_df["days_since_last_transaction"] > 120).astype(float) +
-    #     0.25 * (feature_df["transaction_count"] < 5).astype(float) +
-    #     0.2 * (feature_df["total_spending"] < 500).astype(float) +
-    #     0.15 * (feature_df["credit_score"] < 600).astype(float) +
-    #     0.1 * (feature_df["income"] < feature_df["income"].median()).astype(float) +
-    #     rng.normal(0, 0.1, size=len(feature_df))  # Add noise for realism
-    # )
-    # churn_probability = np.clip(churn_probability, 0, 1)
-    # feature_df["churn"] = (rng.random(len(feature_df)) < churn_probability).astype(int)
+        feature_matrix = feature_matrix.reset_index()
+        print("--- Automated feature engineering complete ---")
+
+    except Exception as e:
+        print(f"--- Error during automated feature engineering: {e} ---")
+        print("--- Returning original dataframe ---")
+        feature_matrix = feature_df
 
     paths = paths_config or get_paths_config()
-    save_dataframe(feature_df, paths.output_dir / "aggregated_features.csv")
+    save_dataframe(feature_matrix, paths.output_dir / "aggregated_features.csv")
 
-    return feature_df
+    return feature_matrix

@@ -22,6 +22,9 @@ def select_model_with_llm(df_head: str, target_column: str, task_type: str) -> s
     else:
         models = ["RandomForestRegressor", "GradientBoostingRegressor", "XGBRegressor"]
 
+    print("--- Dataset Info ---")
+    print(df_head)
+
     prompt = f"""
     Given the following dataset head and target column, which model would be the best to train?
     Dataset Head:
