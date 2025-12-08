@@ -33,7 +33,7 @@ def analyze_and_answer_query(
         return "Error: GEMINI_API_KEY not found."
 
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('models/gemini-2.5-flash')
+    model = genai.GenerativeModel('models/gemini-1.5-flash')
 
     # Construct context
     df_head = user_df.head().to_string()

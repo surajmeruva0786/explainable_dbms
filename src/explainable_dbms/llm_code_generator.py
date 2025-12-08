@@ -120,7 +120,7 @@ Task Type: {model_type}
 
 **Code Requirements:**
 
-1. **Imports:** Include all necessary imports
+1. **Imports:** Include all necessary imports. EXPLICITLY import the model class (e.g., `from xgboost import XGBClassifier`).
 2. **Load Data:** Load from temp_data/{filename}
 3. **Preprocessing:**
    - Handle missing values: {pipeline_strategy['preprocessing'].get('handle_missing', 'drop_rows')}
@@ -188,6 +188,7 @@ def _fallback_code_template(
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from xgboost import XGBClassifier, XGBRegressor
 from sklearn.preprocessing import LabelEncoder
 from sklearn.impute import SimpleImputer
 import shap

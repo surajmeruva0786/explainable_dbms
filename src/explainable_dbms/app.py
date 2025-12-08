@@ -276,15 +276,46 @@ async def analyze_dataset(request: AnalysisRequest):
     
     # Generate analysis ID
     analysis_id = str(uuid.uuid4())
+    analysis_path = ARTIFACTS_DIR / analysis_id
+    analysis_path.mkdir(exist_ok=True)
+
+    # Move generated artifacts to analysis folder to isolate session
+    final_artifacts = {}
+    for key, path_str in execution_result['artifacts'].items():
+        src_path = Path(path_str)
+        if src_path.exists():
+            dst_path = analysis_path / src_path.name
+            # Copy or move
+            import shutil
+            shutil.copy2(src_path, dst_path)
+            final_artifacts[key] = str(dst_path)
+
+    # Save state for query handler
+    # We need to reconstruct the artifact object or similar state
+    # Since we don't have the explicit 'artifact' object from part3_ml_xai here (we used LLM code),
+    # we'll save the dictionary of context needed for querying.
+    state_to_save = {
+        "user_df": df,
+        "target_column": target_column,
+        "task_type": model_type, # approximating task_type from model_type
+        # Add a dummy artifact object or just dict if query_handler supports it
+        # query_handler uses: state["user_df"], state["target_column"], state["task_type"]
+        # It DOES NOT strictly use 'artifact' object anymore for the unified handler, just the artifacts list provided by fs
+    }
+    with open(analysis_path / "state.pkl", "wb") as f:
+        pickle.dump(state_to_save, f)
+        
+    # Also move metrics.json if it exists
+    metrics_src = ARTIFACTS_DIR / "metrics.json"
+    if metrics_src.exists():
+        shutil.copy2(metrics_src, analysis_path / "metrics.json")
     
     # Return results with artifact paths
     # Return results with artifact paths
     plot_urls = {}
-    for key, path_str in execution_result['artifacts'].items():
-        # Convert local path to web URL
-        # Assumption: artifacts are in 'artifacts/' directory which is mounted at '/artifacts'
+    for key, path_str in final_artifacts.items():
         filename = Path(path_str).name
-        plot_urls[key] = f"/artifacts/{filename}"
+        plot_urls[key] = f"/artifacts/{analysis_id}/{filename}"
 
     return {
         "message": "Analysis complete",
@@ -302,6 +333,9 @@ def query_endpoint(request: QueryRequest):
         result = handle_query(request.query, request.analysis_id)
         return result
     except Exception as e:
+        print(f"ERROR in /api/query: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- Serve Frontend and Static Files ---
