@@ -61,7 +61,11 @@ def initialize_database(config: DatabaseConfig | None = None) -> Engine:
     Top-level helper to create the database (if required) and return an engine.
     """
     cfg = config or get_database_config()
-    create_mysql_database(cfg)
+    
+    # Only create MySQL database if using MySQL
+    if cfg.db_type.lower() == "mysql":
+        create_mysql_database(cfg)
+    
     engine = get_engine(cfg)
     drop_specific_table(engine, "prediction_results")
     create_tables(engine)

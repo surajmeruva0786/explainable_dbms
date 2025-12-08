@@ -6,16 +6,20 @@ import uuid
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, HTTPException, Body
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
 import re
+import json
 
 from .part1_setup import initialize_database
 from .part2_schema_data import load_user_data, compute_aggregated_features
 from .part3_ml_xai import train_models_and_explain
 from .part4_visualization import generate_visualizations
-from .query_handler import answer_user_query, answer_general_query
+from .query_handler import analyze_and_answer_query
 from .llm_model_selector import select_model_with_llm
+
+from .llm_column_extractor import extract_target_columns_with_llm
 
 # --- Directory setup for state management ---
 ARTIFACTS_DIR = Path("artifacts")
@@ -25,6 +29,18 @@ DATA_DIR.mkdir(exist_ok=True)
 
 # --- FastAPI App and Data Models ---
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
+
+# Mount artifacts directory for serving generated plots
+app.mount("/artifacts", StaticFiles(directory="artifacts"), name="artifacts")
 
 class AnalysisRequest(BaseModel):
     filename: str
@@ -109,39 +125,175 @@ def handle_query(query: str, analysis_id: str):
     with open(state_path, "rb") as f:
         state = pickle.load(f)
 
-    if re.search(r"explain Rank (\d+)", query, re.IGNORECASE):
-        answer, plot = answer_user_query(query, [state["artifact"]], state["feature_df"], state["target_column"], state["task_type"])
-        plot_path = ARTIFACTS_DIR / analysis_id / "temp_explanation.png"
-        plot.savefig(plot_path)
-        plot_url = f"/artifacts/{analysis_id}/temp_explanation.png"
-        return {"answer": answer, "plot_url": plot_url}
-    else:
-        answer = answer_general_query(query, state["user_df"])
-        return {"answer": answer, "plot_url": None}
+    # Load metrics
+    metrics_path = ARTIFACTS_DIR / "metrics.json"
+    metrics = {}
+    if metrics_path.exists():
+        with open(metrics_path, "r") as f:
+            metrics = json.load(f)
+
+    # List available artifacts
+    artifacts_list = {}
+    analysis_dir = ARTIFACTS_DIR / analysis_id
+    if analysis_dir.exists():
+        for file_path in analysis_dir.glob('*'):
+             if file_path.suffix in ['.png', '.json']:
+                artifacts_list[file_path.name] = str(file_path)
+
+    # Call unified LLM query handler
+    answer = analyze_and_answer_query(
+        query, 
+        state["user_df"], 
+        metrics, 
+        artifacts_list, 
+        state["target_column"], 
+        state["task_type"]
+    )
+    
+    return {"answer": answer, "plot_url": None}
 
 # --- API Endpoints ---
 
 @app.post("/api/upload")
-async def upload_dataset(file: UploadFile = File(...)):
-    """Handles CSV file upload, saves it, and returns its columns."""
+async def upload_file(file: UploadFile = File(...)):
+    """
+    Uploads a CSV file and saves it to disk.
+    Returns basic file information without LLM analysis.
+    """
     if not file.filename.endswith('.csv'):
-        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a CSV.")
+        raise HTTPException(status_code=400, detail="Invalid file type. Please upload a CSV file.")
     
-    file_path = DATA_DIR / file.filename
-    with open(file_path, "wb") as buffer:
-        buffer.write(await file.read())
+    try:
+        # Save uploaded file
+        file_path = DATA_DIR / file.filename
+        with open(file_path, "wb") as buffer:
+            buffer.write(await file.read())
         
-    df = pd.read_csv(file_path)
-    return {"filename": file.filename, "columns": df.columns.tolist()}
+        print(f"\n✓ File uploaded: {file.filename}")
+        print(f"✓ Saved to: {file_path}\n")
+        
+        return {
+            "filename": file.filename,
+            "message": "File uploaded successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error uploading file: {str(e)}")
+
 
 @app.post("/api/analyze")
-def analyze_endpoint(request: AnalysisRequest):
-    """Triggers the main analysis pipeline."""
+async def analyze_dataset(request: AnalysisRequest):
+    """
+    Triggers ML analysis with LLM-generated code.
+    LLM generates complete pipeline code which is then executed.
+    """
+    from .llm_analysis_advisor import get_analysis_recommendations
+    from .llm_pipeline_advisor import get_pipeline_strategy
+    from .llm_code_generator import generate_ml_pipeline_code
+    from .code_executor import execute_generated_code
+    
+    filename = request.filename
+    target_column = request.target_column
+    
+    # Load dataset
+    dataset_path = DATA_DIR / filename
+    if not dataset_path.exists():
+        raise HTTPException(status_code=404, detail=f"Dataset not found: {filename}")
+    
     try:
-        result = run_analysis(request.filename, request.target_column)
-        return result
+        df = pd.read_csv(dataset_path)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=400, detail=f"Failed to read CSV: {e}")
+    
+    # Get LLM recommendations if no target specified
+    if not target_column or target_column == "":
+        print("\n" + "="*80)
+        print("🎯 NO TARGET COLUMN SPECIFIED - REQUESTING LLM RECOMMENDATIONS")
+        print("="*80 + "\n")
+        
+        recommendations = get_analysis_recommendations(df)
+        
+        # Use first suggested target
+        if recommendations['target_columns']:
+            target_column = recommendations['target_columns'][0]
+            model_name = recommendations['recommended_model']
+            model_type = recommendations['model_type']
+            
+            print(f"\n✓ Using LLM-suggested target: {target_column}")
+            print(f"✓ Recommended model: {model_name}")
+            print(f"✓ Model type: {model_type}\n")
+            
+        else:
+            raise HTTPException(status_code=400, detail="Could not determine target column")
+    else:
+        # If target is provided, still get recommendations for model selection
+        recommendations = get_analysis_recommendations(df)
+        model_name = recommendations['recommended_model']
+        model_type = recommendations['model_type']
+    
+    # Get LLM pipeline strategy
+    print("="*80)
+    print("🔧 REQUESTING PREPROCESSING STRATEGY")
+    print("="*80 + "\n")
+    
+    pipeline_strategy = get_pipeline_strategy(df, target_column, model_name, model_type)
+    
+    print(f"\n✓ Pipeline strategy received\n")
+    
+    # Prepare dataset info for code generation
+    dataset_info = {
+        'shape': df.shape,
+        'columns': {}
+    }
+    for col in df.columns:
+        dataset_info['columns'][col] = {
+            'dtype': str(df[col].dtype),
+            'unique_count': int(df[col].nunique()),
+            'is_numeric': pd.api.types.is_numeric_dtype(df[col])
+        }
+    
+    # Generate ML pipeline code with LLM
+    print("="*80)
+    print("💻 GENERATING ML PIPELINE CODE")
+    print("="*80 + "\n")
+    
+    generated_code = generate_ml_pipeline_code(
+        filename, target_column, model_name, model_type,
+        dataset_info, pipeline_strategy
+    )
+    
+    # Execute generated code
+    print("="*80)
+    print("🚀 EXECUTING GENERATED CODE")
+    print("="*80 + "\n")
+    
+    execution_result = execute_generated_code(generated_code)
+    
+    if not execution_result['success']:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Code execution failed: {execution_result['error']}"
+        )
+    
+    # Generate analysis ID
+    analysis_id = str(uuid.uuid4())
+    
+    # Return results with artifact paths
+    # Return results with artifact paths
+    plot_urls = {}
+    for key, path_str in execution_result['artifacts'].items():
+        # Convert local path to web URL
+        # Assumption: artifacts are in 'artifacts/' directory which is mounted at '/artifacts'
+        filename = Path(path_str).name
+        plot_urls[key] = f"/artifacts/{filename}"
+
+    return {
+        "message": "Analysis complete",
+        "analysis_id": analysis_id,
+        "plots": plot_urls,
+        "model": model_name,
+        "target": target_column,
+        "output": execution_result['output']
+    }
 
 @app.post("/api/query")
 def query_endpoint(request: QueryRequest):

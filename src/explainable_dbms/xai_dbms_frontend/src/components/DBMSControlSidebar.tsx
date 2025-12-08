@@ -17,8 +17,8 @@ export interface AnalysisParams {
 export function DBMSControlSidebar({ onRunAnalysis, isAnalyzing }: DBMSControlSidebarProps) {
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [targetColumn, setTargetColumn] = useState("");
   const [analysisError, setAnalysisError] = useState(false);
+
 
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
@@ -34,33 +34,57 @@ export function DBMSControlSidebar({ onRunAnalysis, isAnalyzing }: DBMSControlSi
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    
+
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       if (file.name.endsWith('.csv')) {
         setUploadedFile(file);
         setAnalysisError(false);
+        uploadFileToBackend(file);
       }
+    }
+  };
+
+  const uploadFileToBackend = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to upload file');
+      }
+
+      console.log('File uploaded successfully');
+    } catch (error) {
+      console.error('Upload error:', error);
     }
   };
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setUploadedFile(e.target.files[0]);
+      const file = e.target.files[0];
+      setUploadedFile(file);
       setAnalysisError(false);
+      uploadFileToBackend(file);
     }
   };
 
   const handleRunAnalysis = () => {
-    if (!uploadedFile || !targetColumn) {
+    if (!uploadedFile) {
       setAnalysisError(true);
       return;
     }
-    
+
     setAnalysisError(false);
+    // Pass empty target column - LLM will suggest it
     onRunAnalysis({
       csvFile: uploadedFile,
-      targetColumn,
+      targetColumn: "",
     });
   };
 
@@ -72,7 +96,7 @@ export function DBMSControlSidebar({ onRunAnalysis, isAnalyzing }: DBMSControlSi
           <Upload className="w-4 h-4 transition-transform duration-300 group-hover:scale-110" style={{ color: 'var(--text-primary)' }} />
           <Label style={{ color: 'var(--text-primary)' }}>Upload CSV</Label>
         </div>
-        
+
         <div
           onDragEnter={handleDrag}
           onDragLeave={handleDrag}
@@ -80,8 +104,8 @@ export function DBMSControlSidebar({ onRunAnalysis, isAnalyzing }: DBMSControlSi
           onDrop={handleDrop}
           className={`
             relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-300 transform hover:scale-[1.02]
-            ${dragActive 
-              ? 'border-accent-primary bg-accent-primary/10 scale-[1.02]' 
+            ${dragActive
+              ? 'border-accent-primary bg-accent-primary/10 scale-[1.02]'
               : 'border-border-color hover:border-accent-primary/50 hover:shadow-lg'
             }
           `}
@@ -94,9 +118,9 @@ export function DBMSControlSidebar({ onRunAnalysis, isAnalyzing }: DBMSControlSi
             onChange={handleFileInput}
           />
           <label htmlFor="csv-upload" className="cursor-pointer group">
-            <Upload 
-              className="w-8 h-8 mx-auto mb-2 transition-all duration-300 group-hover:scale-110 group-hover:-translate-y-1" 
-              style={{ color: dragActive ? 'var(--accent-primary)' : 'var(--text-secondary)' }} 
+            <Upload
+              className="w-8 h-8 mx-auto mb-2 transition-all duration-300 group-hover:scale-110 group-hover:-translate-y-1"
+              style={{ color: dragActive ? 'var(--accent-primary)' : 'var(--text-secondary)' }}
             />
             {uploadedFile ? (
               <div>
@@ -124,49 +148,6 @@ export function DBMSControlSidebar({ onRunAnalysis, isAnalyzing }: DBMSControlSi
         </div>
       </div>
 
-      {/* Select Target Column */}
-      <div className="space-y-3 bg-bg-primary rounded-lg p-4 border border-border-color hover:border-accent-primary/30 transition-all duration-300 animate-fade-in" style={{ animationDelay: '0.2s', opacity: 0 }}>
-        <div className="flex items-center justify-between">
-          <Label style={{ color: 'var(--text-primary)' }}>
-            Select Target Column
-          </Label>
-          <X className="w-4 h-4 cursor-pointer hover:text-accent-primary transition-colors duration-200" style={{ color: 'var(--text-secondary)' }} />
-        </div>
-        
-        {!uploadedFile && (
-          <div className="py-4 text-center">
-            <p className="text-xs px-3 py-2 rounded-full bg-red-500/20 border border-red-500 inline-block" style={{ color: '#ef4444' }}>
-              Error
-            </p>
-          </div>
-        )}
-        
-        {uploadedFile && (
-          <Select value={targetColumn} onValueChange={setTargetColumn}>
-            <SelectTrigger 
-              className="bg-bg-secondary border-border-color focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              <SelectValue placeholder="Select column..." />
-            </SelectTrigger>
-            <SelectContent className="bg-bg-secondary border-border-color">
-              <SelectItem value="sales" className="focus:bg-accent-primary/20">
-                sales
-              </SelectItem>
-              <SelectItem value="revenue" className="focus:bg-accent-primary/20">
-                revenue
-              </SelectItem>
-              <SelectItem value="customers" className="focus:bg-accent-primary/20">
-                customers
-              </SelectItem>
-              <SelectItem value="transactions" className="focus:bg-accent-primary/20">
-                transactions
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        )}
-      </div>
-
       {/* Run Analysis Button */}
       <Button
         onClick={handleRunAnalysis}
@@ -192,7 +173,7 @@ export function DBMSControlSidebar({ onRunAnalysis, isAnalyzing }: DBMSControlSi
           </Label>
           <X className="w-4 h-4 cursor-pointer hover:text-accent-primary transition-colors duration-200" style={{ color: 'var(--text-secondary)' }} />
         </div>
-        
+
         <div className="py-4 text-center">
           {analysisError ? (
             <p className="text-xs px-3 py-2 rounded-full bg-red-500/20 border border-red-500 inline-block animate-scale-in" style={{ color: '#ef4444' }}>
