@@ -68,8 +68,20 @@ Answer the user's question based strictly on the provided context.
 
 **Answer:**"""
 
+    print("\n" + "="*80)
+    print("❓ LLM QUERY PROMPT")
+    print("="*80)
+    print(query)
+    print("="*80 + "\n")
+
     try:
         response = model.generate_content(prompt)
+        print("\n" + "="*80)
+        print("💡 LLM RESPONSE")
+        print("="*80)
+        print(response.text)
+        print("="*80 + "\n")
         return response.text
     except Exception as e:
+        print(f"❌ Error generating answer: {e}")
         return f"Error generating answer: {e}"

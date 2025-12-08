@@ -7,6 +7,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 
 interface QuestionAnswerSectionProps {
   hasAnalysis: boolean;
+  analysisId: string;
 }
 
 const explanationData = [
@@ -17,17 +18,46 @@ const explanationData = [
   { name: 'Feature 5', importance: 0.15 },
 ];
 
-export function QuestionAnswerSection({ hasAnalysis }: QuestionAnswerSectionProps) {
+export function QuestionAnswerSection({ hasAnalysis, analysisId }: { hasAnalysis: boolean; analysisId: string }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
-  const [showExplanation, setShowExplanation] = useState(false);
+  const [plotUrl, setPlotUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleAsk = () => {
-    if (!question.trim()) return;
-    
-    // Simulate answer generation
-    setAnswer(`Based on the analysis of your dataset:\n\nThe ${question.toLowerCase()} shows a significant correlation with the target variable. The model has identified key patterns in the data that suggest a strong relationship between these features.\n\nKey findings:\n• Primary factor: High correlation coefficient (0.85)\n• Secondary factors: Supporting evidence from multiple features\n• Confidence level: 92%\n\nRecommendation: Further investigation of feature interactions is advised.`);
-    setShowExplanation(true);
+  const handleAsk = async () => {
+    if (!question.trim() || !hasAnalysis) return;
+
+    setIsLoading(true);
+    setAnswer("");
+    setPlotUrl(null);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: question,
+          analysis_id: analysisId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get answer');
+      }
+
+      const data = await response.json();
+      setAnswer(data.answer);
+      if (data.plot_url) {
+        setPlotUrl(data.plot_url);
+      }
+    } catch (error) {
+      console.error("Query error:", error);
+      setAnswer("Sorry, I encountered an error while processing your question.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -44,14 +74,14 @@ export function QuestionAnswerSection({ hasAnalysis }: QuestionAnswerSectionProp
             placeholder="What insights can you provide about this data?"
             className="min-h-[100px] bg-bg-primary border-border-color focus:border-accent-primary focus:ring-2 focus:ring-accent-primary/20 resize-none transition-all duration-300 hover:shadow-lg"
             style={{ color: 'var(--text-primary)' }}
-            disabled={!hasAnalysis}
+            disabled={!hasAnalysis || isLoading}
           />
           <Button
             onClick={handleAsk}
-            disabled={!hasAnalysis || !question.trim()}
+            disabled={!hasAnalysis || !question.trim() || isLoading}
             className="w-full bg-text-secondary hover:bg-text-secondary/90 text-bg-primary transform hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-lg hover:shadow-xl"
           >
-            Ask
+            {isLoading ? "Analyzing..." : "Ask"}
           </Button>
         </div>
 
@@ -64,37 +94,26 @@ export function QuestionAnswerSection({ hasAnalysis }: QuestionAnswerSectionProp
             value={answer}
             readOnly
             placeholder="Answer will appear here..."
-            className="min-h-[100px] bg-bg-primary border-border-color resize-none transition-all duration-300"
+            className="min-h-[100px] bg-bg-primary border-border-color resize-none transition-all duration-300 font-mono text-sm leading-relaxed"
             style={{ color: 'var(--text-primary)' }}
           />
         </div>
       </div>
 
       {/* Explanation Plot */}
-      {showExplanation && (
+      {plotUrl && (
         <div className="px-6 pb-6 animate-scale-in">
           <div className="bg-bg-primary rounded-lg border border-border-color p-4 hover:border-accent-primary/40 transition-all duration-300 hover:shadow-lg">
             <div className="flex items-center gap-2 mb-4 group">
               <BarChart3 className="w-4 h-4 transition-transform duration-300 group-hover:scale-110" style={{ color: 'var(--accent-primary)' }} />
               <h3 className="text-sm" style={{ color: 'var(--text-primary)' }}>Explanation Plot</h3>
             </div>
-            <div className="h-[200px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={explanationData} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-                  <XAxis type="number" stroke="var(--text-secondary)" />
-                  <YAxis type="category" dataKey="name" stroke="var(--text-secondary)" />
-                  <Tooltip 
-                    contentStyle={{ 
-                      backgroundColor: 'var(--bg-secondary)', 
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '8px',
-                      color: 'var(--text-primary)'
-                    }} 
-                  />
-                  <Bar dataKey="importance" fill="var(--accent-primary)" animationDuration={800} />
-                </BarChart>
-              </ResponsiveContainer>
+            <div className="h-[300px] flex items-center justify-center bg-white/5 rounded-md overflow-hidden">
+              <img
+                src={`http://localhost:8000${plotUrl}`}
+                alt="Explanation Plot"
+                className="max-h-full max-w-full object-contain"
+              />
             </div>
           </div>
         </div>
