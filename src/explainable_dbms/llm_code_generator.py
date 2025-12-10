@@ -74,11 +74,19 @@ def generate_ml_pipeline_code(
         print(f"\n✓ Code generated successfully ({len(code)} characters)")
         print(f"✓ Ready for execution\n")
         
+        # Log to Firestore
+        from .firestore_logger import log_llm_code_generation
+        log_llm_code_generation(prompt, code, success=True)
+        
         return code
         
     except Exception as e:
         print("\n" + "="*80)
         print(f"❌ ERROR generating code: {e}")
+        # Log failure
+        from .firestore_logger import log_llm_code_generation
+        log_llm_code_generation("", "", success=False, error=str(e))
+        
         print("🔄 Using fallback code template")
         print("="*80 + "\n")
         return _fallback_code_template(filename, target_column, model_name, model_type)

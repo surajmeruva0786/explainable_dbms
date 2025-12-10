@@ -150,6 +150,10 @@ def handle_query(query: str, analysis_id: str):
         state["task_type"]
     )
     
+    # Log query interaction
+    from .firestore_logger import log_query
+    log_query(query, answer, analysis_id)
+
     return {"answer": answer, "plot_url": None}
 
 # --- API Endpoints ---
@@ -194,6 +198,13 @@ async def analyze_dataset(request: AnalysisRequest):
     filename = request.filename
     target_column = request.target_column
     
+    # Generate analysis ID at start for logging
+    analysis_id = str(uuid.uuid4())
+    print(f"🆔 Analysis ID: {analysis_id}")
+    
+    from .firestore_logger import log_analysis_start, log_analysis_completion
+    log_analysis_start(filename, target_column, analysis_id)
+
     # Load dataset
     dataset_path = DATA_DIR / filename
     if not dataset_path.exists():
@@ -274,8 +285,7 @@ async def analyze_dataset(request: AnalysisRequest):
             detail=f"Code execution failed: {execution_result['error']}"
         )
     
-    # Generate analysis ID
-    analysis_id = str(uuid.uuid4())
+    # Create analysis folder
     analysis_path = ARTIFACTS_DIR / analysis_id
     analysis_path.mkdir(exist_ok=True)
 
@@ -316,6 +326,14 @@ async def analyze_dataset(request: AnalysisRequest):
     for key, path_str in final_artifacts.items():
         filename = Path(path_str).name
         plot_urls[key] = f"/artifacts/{analysis_id}/{filename}"
+
+    # Log completion
+    metrics = {}
+    if (analysis_path / "metrics.json").exists():
+        with open(analysis_path / "metrics.json", "r") as f:
+            metrics = json.load(f)
+
+    log_analysis_completion(analysis_id, model_name, metrics, plot_urls)
 
     return {
         "message": "Analysis complete",
