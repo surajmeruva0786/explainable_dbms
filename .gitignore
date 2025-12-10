@@ -84,5 +84,20 @@ ehthumbs.db
 Desktop.ini
 
 
-# Secrets
+# Secrets and Environment Variables
 .env
+.env.*
+!.env.example
+*.env
+.env.local
+.env.production
+.env.development
+secrets.json
+credentials.json
+*_credentials.json
+*_secrets.json
+service-account*.json
+
+# Temporary data and artifacts (may contain sensitive info)
+temp_data/*.csv
+artifacts/*/state.pkl
