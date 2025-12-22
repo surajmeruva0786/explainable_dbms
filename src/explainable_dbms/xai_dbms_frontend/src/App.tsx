@@ -72,15 +72,13 @@ export default function App() {
           isAnalyzing={isAnalyzing}
         />
 
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto">
-            <AnalysisVisualizations
-              hasData={hasAnalysis}
-              showError={showError}
-              errorMessage={errorMessage}
-              analysisResult={analysisResult}
-            />
-          </div>
+        <div className="flex-1 overflow-y-auto">
+          <AnalysisVisualizations
+            hasData={hasAnalysis}
+            showError={showError}
+            errorMessage={errorMessage}
+            analysisResult={analysisResult}
+          />
 
           <QuestionAnswerSection
             hasAnalysis={hasAnalysis}

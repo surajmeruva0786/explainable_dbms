@@ -90,13 +90,20 @@ export function QuestionAnswerSection({ hasAnalysis, analysisId }: { hasAnalysis
           <Label style={{ color: 'var(--text-primary)' }}>
             Answer
           </Label>
-          <Textarea
-            value={answer}
-            readOnly
-            placeholder="Answer will appear here..."
-            className="min-h-[100px] bg-bg-primary border-border-color resize-none transition-all duration-300 font-mono text-sm leading-relaxed"
-            style={{ color: 'var(--text-primary)' }}
-          />
+          <div className="relative">
+            <Textarea
+              value={answer}
+              readOnly
+              placeholder="Answer will appear here..."
+              className="h-[400px] bg-bg-primary border-border-color resize-none transition-all duration-300 text-sm leading-relaxed overflow-y-auto whitespace-pre-wrap"
+              style={{ color: 'var(--text-primary)', fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.6' }}
+            />
+          </div>
+          {answer && answer.length > 500 && (
+            <p className="text-xs text-muted-foreground italic">
+              Scroll to read the complete answer
+            </p>
+          )}
         </div>
       </div>
 

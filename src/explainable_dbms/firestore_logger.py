@@ -51,7 +51,17 @@ def log_to_firestore(collection: str, data: dict):
             response = requests.post(url, json=document)
             
             if not response.ok:
-                print(f"⚠️ Firestore Log Warning: {response.status_code} - {response.text}")
+                error_detail = response.text
+                if response.status_code == 403:
+                    print(f"⚠️ Firestore Permission Denied (403)")
+                    print(f"   Please deploy firestore.rules to your Firebase project:")
+                    print(f"   1. Install Firebase CLI: npm install -g firebase-tools")
+                    print(f"   2. Login: firebase login")
+                    print(f"   3. Initialize: firebase init firestore")
+                    print(f"   4. Deploy rules: firebase deploy --only firestore:rules")
+                    print(f"   Or update rules manually in Firebase Console")
+                else:
+                    print(f"⚠️ Firestore Log Warning: {response.status_code} - {error_detail}")
             # else:
             #     print(f"✓ Logged to {collection}")
 
