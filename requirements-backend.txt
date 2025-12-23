@@ -1,0 +1,24 @@
+# Production Requirements for Backend Deployment
+# Core dependencies
+mysql-connector-python
+sqlalchemy
+pandas
+numpy
+scikit-learn
+xgboost
+shap
+lime
+matplotlib
+seaborn
+plotly
+kaleido
+scipy
+google-generativeai
+python-dotenv
+featuretools
+
+# FastAPI and server dependencies
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
