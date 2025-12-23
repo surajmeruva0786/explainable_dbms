@@ -46,7 +46,7 @@ Configure the following settings in Render:
 | **Name** | `explainable-dbms-frontend` (or your preferred name) |
 | **Branch** | `main` (or your default branch) |
 | **Root Directory** | `src/explainable_dbms/xai_dbms_frontend` |
-| **Build Command** | `npm install && npm run build` |
+| **Build Command** | `npm install && npx vite build` |
 | **Publish Directory** | `src/explainable_dbms/xai_dbms_frontend/build` |
 
 > [!IMPORTANT]
