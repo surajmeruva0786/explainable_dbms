@@ -19,7 +19,7 @@ services:
   - type: web
     name: explainable-dbms-frontend
     env: static
-    buildCommand: cd src/explainable_dbms/xai_dbms_frontend && npm install && npm run build
+    buildCommand: cd src/explainable_dbms/xai_dbms_frontend && rm -f package-lock.json && npm install && npx --yes vite build
     staticPublishPath: src/explainable_dbms/xai_dbms_frontend/dist
     routes:
       - type: rewrite
