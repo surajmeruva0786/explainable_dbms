@@ -14,10 +14,6 @@ services:
         sync: false
       - key: DB_TYPE
         value: sqlite
-    disk:
-      name: data
-      mountPath: /opt/render/project/src
-      sizeGB: 1
 
   # Frontend Static Site
   - type: web
