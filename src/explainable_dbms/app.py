@@ -360,8 +360,16 @@ def query_endpoint(request: QueryRequest):
 
 # Serve the generated artifacts (plots)
 app.mount("/artifacts", StaticFiles(directory=ARTIFACTS_DIR), name="artifacts")
-# Serve the main frontend application
-app.mount("/", StaticFiles(directory="src/explainable_dbms/xai_dbms_frontend/build", html=True), name="static")
+
+# Serve the main frontend application (optional - only if directory exists)
+frontend_dir = Path("src/explainable_dbms/xai_dbms_frontend/dist")
+if frontend_dir.exists():
+    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="static")
+    print(f"✓ Serving frontend from {frontend_dir}")
+else:
+    print(f"⚠️ Frontend directory not found at {frontend_dir}")
+    print("   Backend API is available at /api/* endpoints")
+    print("   Visit /docs for API documentation")
 
 if __name__ == "__main__":
     host = "127.0.0.1"
